@@ -1,0 +1,82 @@
+=== Running with 1 processes ===
+Total max times across all ranks:
+ IO Time   = 4.251001 sec
+ Comm Time = 0.000008 sec
+ Comp Time = 19.882498 sec
+ Total     = 24.133510 sec
+
+=== Running with 2 processes ===
+Total max times across all ranks:
+ IO Time   = 2.867353 sec
+ Comm Time = 2.059421 sec
+ Comp Time = 11.419726 sec
+ Total     = 15.847401 sec
+
+=== Running with 3 processes ===
+Total max times across all ranks:
+ IO Time   = 3.311517 sec
+ Comm Time = 4.227807 sec
+ Comp Time = 8.759994 sec
+ Total     = 14.872731 sec
+
+=== Running with 4 processes ===
+Total max times across all ranks:
+ IO Time   = 2.953219 sec
+ Comm Time = 2.806176 sec
+ Comp Time = 7.331522 sec
+ Total     = 12.535764 sec
+
+=== Running with 5 processes ===
+Total max times across all ranks:
+ IO Time   = 2.793092 sec
+ Comm Time = 3.997154 sec
+ Comp Time = 6.426348 sec
+ Total     = 12.206357 sec
+
+=== Running with 6 processes ===
+Total max times across all ranks:
+ IO Time   = 3.060818 sec
+ Comm Time = 3.738448 sec
+ Comp Time = 6.030445 sec
+ Total     = 11.991058 sec
+
+=== Running with 7 processes ===
+Total max times across all ranks:
+ IO Time   = 3.344186 sec
+ Comm Time = 4.522340 sec
+ Comp Time = 5.793874 sec
+ Total     = 12.733797 sec
+
+=== Running with 8 processes ===
+Total max times across all ranks:
+ IO Time   = 2.570292 sec
+ Comm Time = 4.269112 sec
+ Comp Time = 5.366896 sec
+ Total     = 11.431990 sec
+
+=== Running with 9 processes ===
+IO Time   = 3.416711 sec
+ Comm Time = 5.308565 sec
+ Comp Time = 5.325597 sec
+ Total     = 12.860546 sec
+
+=== Running with 10 processes ===
+Total max times across all ranks:
+ IO Time   = 3.338667 sec
+ Comm Time = 5.132692 sec
+ Comp Time = 5.067523 sec
+ Total     = 12.621171 sec
+
+=== Running with 11 processes ===
+Total max times across all ranks:
+ IO Time   = 3.128264 sec
+ Comm Time = 5.478373 sec
+ Comp Time = 5.063554 sec
+ Total     = 12.681315 sec
+ 
+=== Running with 12 processes ===
+Total max times across all ranks:
+ IO Time   = 2.170459 sec
+ Comm Time = 5.491365 sec
+ Comp Time = 4.986901 sec
+ Total     = 11.786981 sec

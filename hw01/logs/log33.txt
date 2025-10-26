@@ -1,0 +1,84 @@
+=== Running with 1 processes ===
+Total max times across all ranks:
+ IO Time   = 9.590659 sec
+ Comm Time = 0.000010 sec
+ Comp Time = 22.016301 sec
+ Total     = 31.606972 sec
+
+=== Running with 2 processes ===
+Total max times across all ranks:
+ IO Time   = 4.500416 sec
+ Comm Time = 1.852856 sec
+ Comp Time = 11.438240 sec
+ Total     = 17.598055 sec
+
+=== Running with 3 processes ===
+Total max times across all ranks:
+ IO Time   = 2.668146 sec
+ Comm Time = 3.328842 sec
+ Comp Time = 8.376560 sec
+ Total     = 13.465184 sec
+
+=== Running with 4 processes ===
+Total max times across all ranks:
+ IO Time   = 2.893434 sec
+ Comm Time = 3.103908 sec
+ Comp Time = 7.455141 sec
+ Total     = 12.662957 sec
+
+=== Running with 5 processes ===
+Total max times across all ranks:
+ IO Time   = 2.972090 sec
+ Comm Time = 3.447109 sec
+ Comp Time = 5.857271 sec
+ Total     = 11.513382 sec
+
+=== Running with 6 processes ===
+Total max times across all ranks:
+ IO Time   = 2.513789 sec
+ Comm Time = 3.323190 sec
+ Comp Time = 5.263734 sec
+ Total     = 10.496750 sec
+
+=== Running with 7 processes ===
+Total max times across all ranks:
+ IO Time   = 2.765070 sec
+ Comm Time = 4.037390 sec
+ Comp Time = 4.906515 sec
+ Total     = 10.772364 sec
+
+=== Running with 8 processes ===
+Total max times across all ranks:
+ IO Time   = 2.405051 sec
+ Comm Time = 4.017131 sec
+ Comp Time = 4.691826 sec
+ Total     = 10.439911 sec
+
+=== Running with 9 processes ===
+Total max times across all ranks:
+ IO Time   = 2.185469 sec
+ Comm Time = 4.944892 sec
+ Comp Time = 4.838313 sec
+ Total     = 10.937921 sec
+
+=== Running with 10 processes ===
+Total max times across all ranks:
+ IO Time   = 2.372292 sec
+ Comm Time = 4.939943 sec
+ Comp Time = 4.491392 sec
+ Total     = 11.005090 sec
+
+=== Running with 11 processes ===
+Total max times across all ranks:
+ IO Time   = 2.327133 sec
+ Comm Time = 5.730703 sec
+ Comp Time = 4.415640 sec
+ Total     = 11.405053 sec
+
+=== Running with 12 processes ===
+Total max times across all ranks:
+ IO Time   = 2.257255 sec
+ Comm Time = 5.676071 sec
+ Comp Time = 4.458350 sec
+ Total     = 11.348346 sec
+

@@ -1,0 +1,13 @@
+=== Running with 1 processes ===
+Total max times across all ranks:
+ IO Time   = 2.929323 sec
+ Comm Time = 0.000009 sec
+ Comp Time = 19.837993 sec
+ Total     = 22.767328 sec
+
+=== Running with 2 processes ===
+Total max times across all ranks:
+ IO Time   = 3.431614 sec
+ Comm Time = 2.121435 sec
+ Comp Time = 11.410819 sec
+ Total     = 16.442799 sec

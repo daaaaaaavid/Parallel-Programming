@@ -1,0 +1,56 @@
+=== Running with 1 processes ===
+Total summed times across all ranks:
+  IO Time   = 7.931183 sec
+  Comm Time = 0.000009 sec
+  Comp Time = 21.955029 sec
+  Total     = 29.886225 sec
+
+=== Running with 2 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.191079 sec
+  Comm Time = 1.767565 sec
+  Comp Time = 11.574809 sec
+  Total     = 16.533464 sec
+
+=== Running with 3 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.562229 sec
+  Comm Time = 3.010199 sec
+  Comp Time = 7.819913 sec
+  Total     = 13.392352 sec
+
+=== Running with 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.540245 sec
+  Comm Time = 2.737483 sec
+  Comp Time = 6.641153 sec
+  Total     = 11.918893 sec
+
+=== Running with 5 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.638963 sec
+  Comm Time = 2.966681 sec
+  Comp Time = 5.618702 sec
+  Total     = 12.224360 sec
+
+=== Running with 6 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.136784 sec
+  Comm Time = 3.271912 sec
+  Comp Time = 5.096086 sec
+  Total     = 11.504800 sec
+
+=== Running with 7 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.559051 sec
+  Comm Time = 3.797910 sec
+  Comp Time = 4.516226 sec
+  Total     = 10.873209 sec
+
+=== Running with 8 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.231947 sec
+  Comm Time = 3.707083 sec
+  Comp Time = 4.457553 sec
+  Total     = 10.396604 sec
+

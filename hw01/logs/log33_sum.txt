@@ -1,0 +1,84 @@
+=== Running with 1 processes ===
+Total summed times across all ranks:
+  IO Time   = 12.520458 sec
+  Comm Time = 0.000009 sec
+  Comp Time = 21.273579 sec
+  Total     = 33.794049 sec
+
+=== Running with 2 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.592715 sec
+  Comm Time = 1.974649 sec
+  Comp Time = 11.858812 sec
+  Total     = 17.426184 sec
+
+=== Running with 3 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.195646 sec
+  Comm Time = 3.312845 sec
+  Comp Time = 7.973306 sec
+  Total     = 14.481807 sec
+
+=== Running with 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.609877 sec
+  Comm Time = 2.898652 sec
+  Comp Time = 6.729343 sec
+  Total     = 13.237886 sec
+
+=== Running with 5 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.708705 sec
+  Comm Time = 3.167884 sec
+  Comp Time = 5.644746 sec
+  Total     = 12.521350 sec
+
+=== Running with 6 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.804545 sec
+  Comm Time = 3.042242 sec
+  Comp Time = 5.083553 sec
+  Total     = 10.930358 sec
+
+=== Running with 7 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.503199 sec
+  Comm Time = 3.779278 sec
+  Comp Time = 4.483705 sec
+  Total     = 10.766205 sec
+
+=== Running with 8 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.496950 sec
+  Comm Time = 3.994236 sec
+  Comp Time = 4.632561 sec
+  Total     = 11.123773 sec
+
+=== Running with 9 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.486121 sec
+  Comm Time = 4.494712 sec
+  Comp Time = 4.363578 sec
+  Total     = 11.344439 sec
+
+=== Running with 10 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.310859 sec
+  Comm Time = 4.935009 sec
+  Comp Time = 4.136180 sec
+  Total     = 11.382079 sec
+
+=== Running with 11 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.321733 sec
+  Comm Time = 5.079176 sec
+  Comp Time = 3.933875 sec
+  Total     = 11.334822 sec
+
+=== Running with 12 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.315361 sec
+  Comm Time = 5.073995 sec
+  Comp Time = 3.931794 sec
+  Total     = 11.321185 sec
+

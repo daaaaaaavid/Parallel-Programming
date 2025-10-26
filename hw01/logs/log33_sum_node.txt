@@ -1,0 +1,28 @@
+=== Running with 1 nodes each has 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 3.506496 sec
+  Comm Time = 4.994047 sec
+  Comp Time = 7.251252 sec
+  Total     = 15.751810 sec
+
+=== Running with 2 nodes each has 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.947624 sec
+  Comm Time = 4.146571 sec
+  Comp Time = 6.988610 sec
+  Total     = 14.082818 sec
+
+=== Running with 3 nodes each has 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 2.610274 sec
+  Comm Time = 5.349922 sec
+  Comp Time = 6.973232 sec
+  Total     = 14.933440 sec
+
+=== Running with 4 nodes each has 4 processes ===
+Total summed times across all ranks:
+  IO Time   = 1.332419 sec
+  Comm Time = 4.749312 sec
+  Comp Time = 6.954167 sec
+  Total     = 13.035909 sec
+
