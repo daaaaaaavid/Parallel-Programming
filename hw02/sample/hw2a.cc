@@ -49,6 +49,8 @@ void write_png(const char* filename, int iters, int width, int height, const int
 }
 
 typedef struct {
+    int* shared_row;
+    pthread_mutex_t row_lock;
     int start_row;
     int end_row;
     int width;
@@ -63,15 +65,24 @@ typedef struct {
 
 void* mandelbrot_worker(void* arg) {
     thread_arg_t* t = (thread_arg_t*)arg;
-    gettimeofday(&t->start_time, NULL);  // 記錄開始時間
-    for (int j = t->start_row; j < t->end_row; ++j) {
-        double y0 = j * ((t->upper - t->lower) / t->height) + t->lower;
+    gettimeofday(&t->start_time, NULL);
+
+    int row;
+    while (1) {
+        // 取 row（保護共享變數）
+        pthread_mutex_lock(&t->row_lock);
+        row = *(t->shared_row);
+        (*(t->shared_row))++;
+        pthread_mutex_unlock(&t->row_lock);
+
+        if (row >= t->height) break;
+
+        double y0 = row * ((t->upper - t->lower) / t->height) + t->lower;
+
         for (int i = 0; i < t->width; ++i) {
             double x0 = i * ((t->right - t->left) / t->width) + t->left;
-
             int repeats = 0;
             double x = 0, y = 0, length_squared = 0;
-
             while (repeats < t->max_iters && length_squared < 4.0) {
                 double temp = x * x - y * y + x0;
                 y = 2 * x * y + y0;
@@ -79,13 +90,14 @@ void* mandelbrot_worker(void* arg) {
                 length_squared = x * x + y * y;
                 ++repeats;
             }
-
-            t->image[j * t->width + i] = repeats;
+            t->image[row * t->width + i] = repeats;
         }
     }
-    gettimeofday(&t->end_time, NULL);    // 記錄結束時間
+
+    gettimeofday(&t->end_time, NULL);
     pthread_exit(NULL);
 }
+
 
 int main(int argc, char** argv) {
     assert(argc == 9);
@@ -111,8 +123,12 @@ int main(int argc, char** argv) {
     thread_arg_t args[nthreads];
 
     int rows_per_thread = height / nthreads;
- 
+    int next_row = 0;
+    pthread_mutex_t row_lock = PTHREAD_MUTEX_INITIALIZER;
+
     for (int t = 0; t < nthreads; ++t) {
+        args[t].shared_row = &next_row;
+        args[t].row_lock = row_lock;  // 傳入鎖
         args[t].start_row = t * rows_per_thread;
         args[t].end_row = (t == nthreads - 1) ? height : (t + 1) * rows_per_thread;
         args[t].width = width;
