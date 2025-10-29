@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#define PNG_NO_SETJMP
 #include <mpi.h>
 #include <omp.h>
 #include <assert.h>
@@ -5,7 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <emmintrin.h>  // SSE2 intrinsics
+#include <emmintrin.h> // SSE2 intrinsics
+
+#define TAG_WORK 1
+#define TAG_RESULT 2
+#define TAG_STOP 3
+
 /*-------------------------------------------------------------
   PNG writer (same as before)
 -------------------------------------------------------------*/
@@ -19,7 +28,9 @@ void write_png(const char* filename, int iters, int width, int height, const int
     png_init_io(png_ptr, fp);
     png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_RGB,
                  PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+    png_set_filter(png_ptr, 0, PNG_NO_FILTERS);
     png_write_info(png_ptr, info_ptr);
+    png_set_compression_level(png_ptr, 1);
 
     size_t row_size = 3 * width * sizeof(png_byte);
     png_bytep row = (png_bytep)malloc(row_size);
@@ -46,66 +57,56 @@ void write_png(const char* filename, int iters, int width, int height, const int
 }
 
 /*-------------------------------------------------------------
-  Compute a range of rows using OpenMP
+  Mandelbrot computation with SSE2 vectorization
 -------------------------------------------------------------*/
-void compute_rows(int start_row, int end_row, int width, int height, int max_iters,
-                  double left, double right, double lower, double upper, int* buffer)
+void compute_row(int row, int width, int height, int max_iters,
+                 double left, double right, double lower, double upper, int* row_data)
 {
+    double y0 = row * ((upper - lower) / height) + lower;
+    double dx = (right - left) / width;
+
 #pragma omp parallel for schedule(dynamic)
-    for (int row = start_row; row < end_row; ++row) {
-        double y0 = row * ((upper - lower) / height) + lower;
+    for (int x = 0; x < width; x += 2) {
+        __m128d x0 = _mm_set_pd(left + (x + 1) * dx, left + x * dx);
+        __m128d y0_vec = _mm_set1_pd(y0);
 
-        // Precompute step in x-direction
-        double dx = (right - left) / width;
+        __m128d a = _mm_setzero_pd();
+        __m128d b = _mm_setzero_pd();
+        __m128d two = _mm_set1_pd(2.0);
+        __m128d four = _mm_set1_pd(4.0);
 
-        for (int x = 0; x < width; x += 2) {
-            // Vector of two x0 values
-            __m128d x0 = _mm_set_pd(left + (x + 1) * dx, left + x * dx);
-            __m128d y0_vec = _mm_set1_pd(y0);
+        int iters[2] = {0, 0};
 
-            __m128d a = _mm_setzero_pd();
-            __m128d b = _mm_setzero_pd();
-            __m128d two = _mm_set1_pd(2.0);
-            __m128d four = _mm_set1_pd(4.0);
+        for (int i = 0; i < max_iters; ++i) {
+            __m128d a2 = _mm_mul_pd(a, a);
+            __m128d b2 = _mm_mul_pd(b, b);
+            __m128d ab = _mm_mul_pd(a, b);
 
-            int iters[2] = {0, 0};
-            __m128d mask;
+            __m128d mag2 = _mm_add_pd(a2, b2);
+            __m128d mask = _mm_cmplt_pd(mag2, four);
+            int mask_bits = _mm_movemask_pd(mask);
 
-            for (int i = 0; i < max_iters; ++i) {
-                // Compute a^2, b^2
-                __m128d a2 = _mm_mul_pd(a, a);
-                __m128d b2 = _mm_mul_pd(b, b);
-                __m128d ab = _mm_mul_pd(a, b);
+            if (mask_bits == 0)
+                break;
 
-                // Compute |z|^2 = a^2 + b^2
-                __m128d mag2 = _mm_add_pd(a2, b2);
-                mask = _mm_cmplt_pd(mag2, four);
+            __m128d a_new = _mm_add_pd(_mm_sub_pd(a2, b2), x0);
+            __m128d b_new = _mm_add_pd(_mm_mul_pd(two, ab), y0_vec);
 
-                // Early exit if both elements escaped
-                int mask_bits = _mm_movemask_pd(mask);
-                if (mask_bits == 0) break;
+            a = _mm_or_pd(_mm_and_pd(mask, a_new), _mm_andnot_pd(mask, a));
+            b = _mm_or_pd(_mm_and_pd(mask, b_new), _mm_andnot_pd(mask, b));
 
-                // Update a and b where mask true
-                __m128d a_new = _mm_add_pd(_mm_sub_pd(a2, b2), x0);
-                __m128d b_new = _mm_add_pd(_mm_mul_pd(two, ab), y0_vec);
-
-                a = _mm_or_pd(_mm_and_pd(mask, a_new), _mm_andnot_pd(mask, a));
-                b = _mm_or_pd(_mm_and_pd(mask, b_new), _mm_andnot_pd(mask, b));
-
-                // Increment iteration counters
-                if (mask_bits & 0x1) iters[0]++;
-                if (mask_bits & 0x2) iters[1]++;
-            }
-
-            // Store results back
-            if (x < width) buffer[(row - start_row) * width + x] = iters[0];
-            if (x + 1 < width) buffer[(row - start_row) * width + x + 1] = iters[1];
+            if (mask_bits & 0x1) iters[0]++;
+            if (mask_bits & 0x2) iters[1]++;
         }
+
+        // Store results
+        if (x < width) row_data[x] = iters[0];
+        if (x + 1 < width) row_data[x + 1] = iters[1];
     }
 }
 
 /*-------------------------------------------------------------
-  Main program
+  Main program (MPI + OpenMP hybrid)
 -------------------------------------------------------------*/
 int main(int argc, char** argv) {
     assert(argc == 9);
@@ -123,38 +124,69 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    /* Divide rows among ranks */
-    int rows_per_rank = height / size;
-    int remainder = height % size;
-    int start_row = rank * rows_per_rank + (rank < remainder ? rank : remainder);
-    int local_rows = rows_per_rank + (rank < remainder ? 1 : 0);
-    int end_row = start_row + local_rows;
-
-    /* Each rank only allocates its part */
-    int* local_image = (int*)malloc(local_rows * width * sizeof(int));
-    compute_rows(start_row, end_row, width, height, iters, left, right, lower, upper, local_image);
-
-    /* Allocate buffer for root and zero-padding for Reduce */
-    int* full_image = NULL;
-    int* temp_image = (int*)calloc(width * height, sizeof(int));
-
-    /* Copy local results into global-index positions */
-    for (int i = 0; i < local_rows; ++i)
-        memcpy(&temp_image[(start_row + i) * width], &local_image[i * width], width * sizeof(int));
-
-    /* Combine all partial images */
-    if (rank == 0)
-        full_image = (int*)calloc(width * height, sizeof(int));
-
-    MPI_Reduce(temp_image, full_image, width * height, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
-
     if (rank == 0) {
-        write_png(filename, iters, width, height, full_image);
-        free(full_image);
+        int *image = (int*)malloc(width * height * sizeof(int));
+        int next_row = 0;
+        MPI_Status status;
+
+        // send initial rows
+        for (int worker = 1; worker < size; ++worker) {
+            if (next_row < height) {
+                MPI_Send(&next_row, 1, MPI_INT, worker, TAG_WORK, MPI_COMM_WORLD);
+                next_row++;
+            }
+        }
+
+        // receive + dispatch
+        while (next_row < height) {
+            int row_index;
+            MPI_Recv(&row_index, 1, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
+
+            int* row_buffer = (int*)malloc(width * sizeof(int));
+            MPI_Recv(row_buffer, width, MPI_INT, status.MPI_SOURCE, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            memcpy(&image[row_index * width], row_buffer, width * sizeof(int));
+            free(row_buffer);
+
+            MPI_Send(&next_row, 1, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
+            next_row++;
+        }
+
+        // finalize remaining rows
+        for (int worker = 1; worker < size; ++worker) {
+            int row_index;
+            MPI_Recv(&row_index, 1, MPI_INT, worker, TAG_RESULT, MPI_COMM_WORLD, &status);
+
+            int* row_buffer = (int*)malloc(width * sizeof(int));
+            MPI_Recv(row_buffer, width, MPI_INT, status.MPI_SOURCE, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            memcpy(&image[row_index * width], row_buffer, width * sizeof(int));
+            free(row_buffer);
+        }
+
+        for (int worker = 1; worker < size; ++worker)
+            MPI_Send(NULL, 0, MPI_INT, worker, TAG_STOP, MPI_COMM_WORLD);
+
+        write_png(filename, iters, width, height, image);
+        free(image);
+    } else {
+        MPI_Status status;
+        int row_index;
+        int* row_data = (int*)malloc(width * sizeof(int));
+
+        while (1) {
+            MPI_Recv(&row_index, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+            if (status.MPI_TAG == TAG_STOP)
+                break;
+
+            compute_row(row_index, width, height, iters, left, right, lower, upper, row_data);
+
+            MPI_Send(&row_index, 1, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
+            MPI_Send(row_data, width, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
+        }
+
+        free(row_data);
     }
 
-    free(local_image);
-    free(temp_image);
     MPI_Finalize();
     return 0;
 }
