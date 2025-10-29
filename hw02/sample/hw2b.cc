@@ -1,7 +1,3 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
-#define PNG_NO_SETJMP
 #include <mpi.h>
 #include <omp.h>
 #include <assert.h>
@@ -9,10 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define TAG_WORK 1
-#define TAG_RESULT 2
-#define TAG_STOP 3
 
 /*-------------------------------------------------------------
   PNG writer (same as before)
@@ -27,9 +19,7 @@ void write_png(const char* filename, int iters, int width, int height, const int
     png_init_io(png_ptr, fp);
     png_set_IHDR(png_ptr, info_ptr, width, height, 8, PNG_COLOR_TYPE_RGB,
                  PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-    png_set_filter(png_ptr, 0, PNG_NO_FILTERS);
     png_write_info(png_ptr, info_ptr);
-    png_set_compression_level(png_ptr, 1);
 
     size_t row_size = 3 * width * sizeof(png_byte);
     png_bytep row = (png_bytep)malloc(row_size);
@@ -56,31 +46,31 @@ void write_png(const char* filename, int iters, int width, int height, const int
 }
 
 /*-------------------------------------------------------------
-  Mandelbrot computation for a single row (OpenMP inside)
+  Compute a range of rows using OpenMP
 -------------------------------------------------------------*/
-void compute_row(int row, int width, int height, int max_iters,
-                 double left, double right, double lower, double upper, int* row_data)
+void compute_rows(int start_row, int end_row, int width, int height, int max_iters,
+                  double left, double right, double lower, double upper, int* buffer)
 {
-    double y0 = row * ((upper - lower) / height) + lower;
-
 #pragma omp parallel for schedule(dynamic)
-    for (int i = 0; i < width; ++i) {
-        double x0 = i * ((right - left) / width) + left;
-        int repeats = 0;
-        double x = 0, y = 0, length_squared = 0;
-        while (repeats < max_iters && length_squared < 4.0) {
-            double temp = x * x - y * y + x0;
-            y = 2 * x * y + y0;
-            x = temp;
-            length_squared = x * x + y * y;
-            ++repeats;
+    for (int row = start_row; row < end_row; ++row) {
+        double y0 = row * ((upper - lower) / height) + lower;
+        for (int x = 0; x < width; ++x) {
+            double x0 = x * ((right - left) / width) + left;
+            int repeats = 0;
+            double a = 0, b = 0;
+            while (repeats < max_iters && a * a + b * b < 4.0) {
+                double temp = a * a - b * b + x0;
+                b = 2 * a * b + y0;
+                a = temp;
+                ++repeats;
+            }
+            buffer[(row - start_row) * width + x] = repeats;
         }
-        row_data[i] = repeats;
     }
 }
 
 /*-------------------------------------------------------------
-  Main program (MPI + OpenMP hybrid)
+  Main program
 -------------------------------------------------------------*/
 int main(int argc, char** argv) {
     assert(argc == 9);
@@ -98,79 +88,38 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    /* Divide rows among ranks */
+    int rows_per_rank = height / size;
+    int remainder = height % size;
+    int start_row = rank * rows_per_rank + (rank < remainder ? rank : remainder);
+    int local_rows = rows_per_rank + (rank < remainder ? 1 : 0);
+    int end_row = start_row + local_rows;
+
+    /* Each rank only allocates its part */
+    int* local_image = (int*)malloc(local_rows * width * sizeof(int));
+    compute_rows(start_row, end_row, width, height, iters, left, right, lower, upper, local_image);
+
+    /* Allocate buffer for root and zero-padding for Reduce */
+    int* full_image = NULL;
+    int* temp_image = (int*)calloc(width * height, sizeof(int));
+
+    /* Copy local results into global-index positions */
+    for (int i = 0; i < local_rows; ++i)
+        memcpy(&temp_image[(start_row + i) * width], &local_image[i * width], width * sizeof(int));
+
+    /* Combine all partial images */
+    if (rank == 0)
+        full_image = (int*)calloc(width * height, sizeof(int));
+
+    MPI_Reduce(temp_image, full_image, width * height, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+
     if (rank == 0) {
-        printf("MPI ranks: %d, OpenMP threads per rank: %d\n", size, omp_get_max_threads());
+        write_png(filename, iters, width, height, full_image);
+        free(full_image);
     }
 
-    /* ---------------- Master process ---------------- */
-    if (rank == 0) {
-        int *image = (int*)malloc(width * height * sizeof(int));
-        int next_row = 0;
-        MPI_Status status;
-
-        // send initial rows to each worker
-        for (int worker = 1; worker < size; ++worker) {
-            if (next_row < height) {
-                MPI_Send(&next_row, 1, MPI_INT, worker, TAG_WORK, MPI_COMM_WORLD);
-                next_row++;
-            }
-        }
-
-        // receive results and assign new rows dynamically
-        while (next_row < height) {
-            int row_index;
-            MPI_Recv(&row_index, 1, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
-
-            int* row_buffer = (int*)malloc(width * sizeof(int));
-            MPI_Recv(row_buffer, width, MPI_INT, status.MPI_SOURCE, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            memcpy(&image[row_index * width], row_buffer, width * sizeof(int));
-            free(row_buffer);
-
-            MPI_Send(&next_row, 1, MPI_INT, status.MPI_SOURCE, TAG_WORK, MPI_COMM_WORLD);
-            next_row++;
-        }
-
-        // gather final rows
-        for (int worker = 1; worker < size; ++worker) {
-            int row_index;
-            MPI_Recv(&row_index, 1, MPI_INT, worker, TAG_RESULT, MPI_COMM_WORLD, &status);
-
-            int* row_buffer = (int*)malloc(width * sizeof(int));
-            MPI_Recv(row_buffer, width, MPI_INT, status.MPI_SOURCE, TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            memcpy(&image[row_index * width], row_buffer, width * sizeof(int));
-            free(row_buffer);
-        }
-
-        // tell all workers to stop
-        for (int worker = 1; worker < size; ++worker)
-            MPI_Send(NULL, 0, MPI_INT, worker, TAG_STOP, MPI_COMM_WORLD);
-
-        // output PNG
-        write_png(filename, iters, width, height, image);
-        free(image);
-    }
-
-    /* ---------------- Worker processes ---------------- */
-    else {
-        MPI_Status status;
-        int row_index;
-        int* row_data = (int*)malloc(width * sizeof(int));
-
-        while (1) {
-            MPI_Recv(&row_index, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-            if (status.MPI_TAG == TAG_STOP)
-                break;
-
-            compute_row(row_index, width, height, iters, left, right, lower, upper, row_data);
-
-            MPI_Send(&row_index, 1, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
-            MPI_Send(row_data, width, MPI_INT, 0, TAG_RESULT, MPI_COMM_WORLD);
-        }
-
-        free(row_data);
-    }
-
+    free(local_image);
+    free(temp_image);
     MPI_Finalize();
     return 0;
 }
