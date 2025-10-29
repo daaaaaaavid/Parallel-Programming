@@ -59,13 +59,13 @@ typedef struct {
     double left, right, lower, upper;
     int *image;
 
-    struct timeval start_time;
-    struct timeval end_time;
+    // struct timeval start_time;
+    // struct timeval end_time;
 } thread_arg_t;
 
 void* mandelbrot_worker(void* arg) {
     thread_arg_t* t = (thread_arg_t*)arg;
-    gettimeofday(&t->start_time, NULL);
+    // gettimeofday(&t->start_time, NULL);
 
     int row;
     while (1) {
@@ -94,7 +94,7 @@ void* mandelbrot_worker(void* arg) {
         }
     }
 
-    gettimeofday(&t->end_time, NULL);
+    // gettimeofday(&t->end_time, NULL);
     pthread_exit(NULL);
 }
 
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
     cpu_set_t cpu_set;
     sched_getaffinity(0, sizeof(cpu_set_t), &cpu_set);
     int nthreads = CPU_COUNT(&cpu_set);
-    printf("Using %d threads\n", nthreads);
+    // printf("Using %d threads\n", nthreads);
 
     int* image = (int*)malloc(width * height * sizeof(int));
     assert(image);
@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
 
     for (int t = 0; t < nthreads; ++t) {
         args[t].shared_row = &next_row;
-        args[t].row_lock = row_lock;  // 傳入鎖
+        args[t].row_lock = row_lock;  
         args[t].start_row = t * rows_per_thread;
         args[t].end_row = (t == nthreads - 1) ? height : (t + 1) * rows_per_thread;
         args[t].width = width;
@@ -146,11 +146,11 @@ int main(int argc, char** argv) {
     for (int t = 0; t < nthreads; ++t) {
         pthread_join(threads[t], NULL);
 
-        double start = args[t].start_time.tv_sec + args[t].start_time.tv_usec / 1000000.0;
-        double end = args[t].end_time.tv_sec + args[t].end_time.tv_usec / 1000000.0;
-        double elapsed = end - start;
+        // double start = args[t].start_time.tv_sec + args[t].start_time.tv_usec / 1000000.0;
+        // double end = args[t].end_time.tv_sec + args[t].end_time.tv_usec / 1000000.0;
+        // double elapsed = end - start;
 
-        printf("Thread %d execution time: %f seconds\n", t, elapsed);
+        // printf("Thread %d execution time: %f seconds\n", t, elapsed);
     }
 
     /* draw and cleanup */
