@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <emmintrin.h>  // SSE2 intrinsics
 /*-------------------------------------------------------------
   PNG writer (same as before)
 -------------------------------------------------------------*/
@@ -54,17 +54,52 @@ void compute_rows(int start_row, int end_row, int width, int height, int max_ite
 #pragma omp parallel for schedule(dynamic)
     for (int row = start_row; row < end_row; ++row) {
         double y0 = row * ((upper - lower) / height) + lower;
-        for (int x = 0; x < width; ++x) {
-            double x0 = x * ((right - left) / width) + left;
-            int repeats = 0;
-            double a = 0, b = 0;
-            while (repeats < max_iters && a * a + b * b < 4.0) {
-                double temp = a * a - b * b + x0;
-                b = 2 * a * b + y0;
-                a = temp;
-                ++repeats;
+
+        // Precompute step in x-direction
+        double dx = (right - left) / width;
+
+        for (int x = 0; x < width; x += 2) {
+            // Vector of two x0 values
+            __m128d x0 = _mm_set_pd(left + (x + 1) * dx, left + x * dx);
+            __m128d y0_vec = _mm_set1_pd(y0);
+
+            __m128d a = _mm_setzero_pd();
+            __m128d b = _mm_setzero_pd();
+            __m128d two = _mm_set1_pd(2.0);
+            __m128d four = _mm_set1_pd(4.0);
+
+            int iters[2] = {0, 0};
+            __m128d mask;
+
+            for (int i = 0; i < max_iters; ++i) {
+                // Compute a^2, b^2
+                __m128d a2 = _mm_mul_pd(a, a);
+                __m128d b2 = _mm_mul_pd(b, b);
+                __m128d ab = _mm_mul_pd(a, b);
+
+                // Compute |z|^2 = a^2 + b^2
+                __m128d mag2 = _mm_add_pd(a2, b2);
+                mask = _mm_cmplt_pd(mag2, four);
+
+                // Early exit if both elements escaped
+                int mask_bits = _mm_movemask_pd(mask);
+                if (mask_bits == 0) break;
+
+                // Update a and b where mask true
+                __m128d a_new = _mm_add_pd(_mm_sub_pd(a2, b2), x0);
+                __m128d b_new = _mm_add_pd(_mm_mul_pd(two, ab), y0_vec);
+
+                a = _mm_or_pd(_mm_and_pd(mask, a_new), _mm_andnot_pd(mask, a));
+                b = _mm_or_pd(_mm_and_pd(mask, b_new), _mm_andnot_pd(mask, b));
+
+                // Increment iteration counters
+                if (mask_bits & 0x1) iters[0]++;
+                if (mask_bits & 0x2) iters[1]++;
             }
-            buffer[(row - start_row) * width + x] = repeats;
+
+            // Store results back
+            if (x < width) buffer[(row - start_row) * width + x] = iters[0];
+            if (x + 1 < width) buffer[(row - start_row) * width + x + 1] = iters[1];
         }
     }
 }
