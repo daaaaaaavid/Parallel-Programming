@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <emmintrin.h> // SSE2 intrinsics
+#include <immintrin.h>  // for SSE2 intrinsics
 
 #define TAG_WORK 1
 #define TAG_RESULT 2
@@ -57,54 +57,100 @@ void write_png(const char* filename, int iters, int width, int height, const int
 }
 
 /*-------------------------------------------------------------
-  Mandelbrot computation with SSE2 vectorization
+  Mandelbrot computation for a single row (OpenMP inside)
 -------------------------------------------------------------*/
 void compute_row(int row, int width, int height, int max_iters,
                  double left, double right, double lower, double upper, int* row_data)
 {
     double y0 = row * ((upper - lower) / height) + lower;
-    double dx = (right - left) / width;
 
-#pragma omp parallel for schedule(dynamic)
-    for (int x = 0; x < width; x += 2) {
-        __m128d x0 = _mm_set_pd(left + (x + 1) * dx, left + x * dx);
-        __m128d y0_vec = _mm_set1_pd(y0);
+    int idx = 0;
+    int CHUNK = width / 30 / omp_get_max_threads();        // adjustable chunk size
+    if (CHUNK < 2) CHUNK = 2;
 
-        __m128d a = _mm_setzero_pd();
-        __m128d b = _mm_setzero_pd();
-        __m128d two = _mm_set1_pd(2.0);
-        __m128d four = _mm_set1_pd(4.0);
+    omp_lock_t lock;
+    omp_init_lock(&lock);
 
-        int iters[2] = {0, 0};
+    #pragma omp parallel num_threads(omp_get_max_threads())
+    {
+        __m128d FOUR = _mm_set1_pd(4.0);
 
-        for (int i = 0; i < max_iters; ++i) {
-            __m128d a2 = _mm_mul_pd(a, a);
-            __m128d b2 = _mm_mul_pd(b, b);
-            __m128d ab = _mm_mul_pd(a, b);
+        while (1) {
+            int start, end;
 
-            __m128d mag2 = _mm_add_pd(a2, b2);
-            __m128d mask = _mm_cmplt_pd(mag2, four);
-            int mask_bits = _mm_movemask_pd(mask);
-
-            if (mask_bits == 0)
+            // Acquire a chunk of work
+            omp_set_lock(&lock);
+            if (idx >= width) {
+                omp_unset_lock(&lock);
                 break;
+            }
+            start = idx;
+            end = idx + CHUNK;
+            if (end > width) end = width;
+            idx = end;
+            omp_unset_lock(&lock);
 
-            __m128d a_new = _mm_add_pd(_mm_sub_pd(a2, b2), x0);
-            __m128d b_new = _mm_add_pd(_mm_mul_pd(two, ab), y0_vec);
+            // Compute each pixel (SIMD for pairs)
+            for (int i = start; i < end; i += 2) {
+                // Handle last pixel if odd width
+                if (i + 1 >= end) {
+                    double x0 = i * ((right - left) / width) + left;
+                    int repeats = 0;
+                    double x = 0, y = 0, length_squared = 0;
+                    while (repeats < max_iters && length_squared < 4.0) {
+                        double temp = x * x - y * y + x0;
+                        y = 2 * x * y + y0;
+                        x = temp;
+                        length_squared = x * x + y * y;
+                        ++repeats;
+                    }
+                    row_data[i] = repeats;
+                    continue;
+                }
 
-            a = _mm_or_pd(_mm_and_pd(mask, a_new), _mm_andnot_pd(mask, a));
-            b = _mm_or_pd(_mm_and_pd(mask, b_new), _mm_andnot_pd(mask, b));
+                // Vectorized version for 2 pixels
+                double x0_arr[2] = {
+                    i * ((right - left) / width) + left,
+                    (i + 1) * ((right - left) / width) + left
+                };
 
-            if (mask_bits & 0x1) iters[0]++;
-            if (mask_bits & 0x2) iters[1]++;
+                __m128d x0_vec = _mm_loadu_pd(x0_arr);
+                __m128d x = _mm_set1_pd(0.0);
+                __m128d y = _mm_set1_pd(0.0);
+                __m128d length_sq = _mm_set1_pd(0.0);
+
+                int repeats[2] = {0, 0};
+                int done_mask = 0;
+
+                for (int k = 0; k < max_iters && done_mask != 3; ++k) {
+                    __m128d x2 = _mm_mul_pd(x, x);
+                    __m128d y2 = _mm_mul_pd(y, y);
+                    __m128d xy = _mm_mul_pd(x, y);
+
+                    __m128d temp_x = _mm_add_pd(_mm_sub_pd(x2, y2), x0_vec);
+                    y = _mm_add_pd(_mm_add_pd(xy, xy), _mm_set1_pd(y0));
+                    x = temp_x;
+
+                    length_sq = _mm_add_pd(x2, y2);
+
+                    // Compare: length_sq < 4.0
+                    __m128d mask = _mm_cmplt_pd(length_sq, FOUR);
+                    int active = _mm_movemask_pd(mask);
+
+                    // Increment counts only for active pixels
+                    if (active & 1) ++repeats[0];
+                    if (active & 2) ++repeats[1];
+                    done_mask = (~active) & 3;
+                }
+
+                row_data[i] = repeats[0];
+                row_data[i + 1] = repeats[1];
+            }
         }
-
-        // Store results
-        if (x < width) row_data[x] = iters[0];
-        if (x + 1 < width) row_data[x + 1] = iters[1];
     }
-}
 
+    omp_destroy_lock(&lock);
+}
 /*-------------------------------------------------------------
   Main program (MPI + OpenMP hybrid)
 -------------------------------------------------------------*/
@@ -124,12 +170,17 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    // if (rank == 0) {
+    //     printf("MPI ranks: %d, OpenMP threads per rank: %d\n", size, omp_get_max_threads());
+    // }
+
+    /* ---------------- Master process ---------------- */
     if (rank == 0) {
         int *image = (int*)malloc(width * height * sizeof(int));
         int next_row = 0;
         MPI_Status status;
 
-        // send initial rows
+        // send initial rows to each worker
         for (int worker = 1; worker < size; ++worker) {
             if (next_row < height) {
                 MPI_Send(&next_row, 1, MPI_INT, worker, TAG_WORK, MPI_COMM_WORLD);
@@ -137,7 +188,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        // receive + dispatch
+        // receive results and assign new rows dynamically
         while (next_row < height) {
             int row_index;
             MPI_Recv(&row_index, 1, MPI_INT, MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &status);
@@ -151,7 +202,7 @@ int main(int argc, char** argv) {
             next_row++;
         }
 
-        // finalize remaining rows
+        // gather final rows
         for (int worker = 1; worker < size; ++worker) {
             int row_index;
             MPI_Recv(&row_index, 1, MPI_INT, worker, TAG_RESULT, MPI_COMM_WORLD, &status);
@@ -162,12 +213,17 @@ int main(int argc, char** argv) {
             free(row_buffer);
         }
 
+        // tell all workers to stop
         for (int worker = 1; worker < size; ++worker)
             MPI_Send(NULL, 0, MPI_INT, worker, TAG_STOP, MPI_COMM_WORLD);
 
+        // output PNG
         write_png(filename, iters, width, height, image);
         free(image);
-    } else {
+    }
+
+    /* ---------------- Worker processes ---------------- */
+    else {
         MPI_Status status;
         int row_index;
         int* row_data = (int*)malloc(width * sizeof(int));
