@@ -10,6 +10,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <immintrin.h>
 
 void write_png(const char* filename, int iters, int width, int height, const int* buffer) {
     FILE* fp = fopen(filename, "wb");
@@ -63,13 +64,46 @@ typedef struct {
     // struct timeval end_time;
 } thread_arg_t;
 
+// void* mandelbrot_worker(void* arg) {
+//     thread_arg_t* t = (thread_arg_t*)arg;
+//     // gettimeofday(&t->start_time, NULL);
+
+//     int row;
+//     while (1) {
+//         // 取 row（保護共享變數）
+//         pthread_mutex_lock(&t->row_lock);
+//         row = *(t->shared_row);
+//         (*(t->shared_row))++;
+//         pthread_mutex_unlock(&t->row_lock);
+
+//         if (row >= t->height) break;
+
+//         double y0 = row * ((t->upper - t->lower) / t->height) + t->lower;
+
+//         for (int i = 0; i < t->width; ++i) {
+//             double x0 = i * ((t->right - t->left) / t->width) + t->left;
+//             int repeats = 0;
+//             double x = 0, y = 0, length_squared = 0;
+//             while (repeats < t->max_iters && length_squared < 4.0) {
+//                 double temp = x * x - y * y + x0;
+//                 y = 2 * x * y + y0;
+//                 x = temp;
+//                 length_squared = x * x + y * y;
+//                 ++repeats;
+//             }
+//             t->image[row * t->width + i] = repeats;
+//         }
+//     }
+
+//     // gettimeofday(&t->end_time, NULL);
+//     pthread_exit(NULL);
+// }
 void* mandelbrot_worker(void* arg) {
     thread_arg_t* t = (thread_arg_t*)arg;
-    // gettimeofday(&t->start_time, NULL);
 
     int row;
     while (1) {
-        // 取 row（保護共享變數）
+        // Lock shared row counter
         pthread_mutex_lock(&t->row_lock);
         row = *(t->shared_row);
         (*(t->shared_row))++;
@@ -79,25 +113,69 @@ void* mandelbrot_worker(void* arg) {
 
         double y0 = row * ((t->upper - t->lower) / t->height) + t->lower;
 
-        for (int i = 0; i < t->width; ++i) {
-            double x0 = i * ((t->right - t->left) / t->width) + t->left;
-            int repeats = 0;
-            double x = 0, y = 0, length_squared = 0;
-            while (repeats < t->max_iters && length_squared < 4.0) {
-                double temp = x * x - y * y + x0;
-                y = 2 * x * y + y0;
-                x = temp;
-                length_squared = x * x + y * y;
-                ++repeats;
+        // SIMD vector for constant 4.0
+        __m128d FOUR = _mm_set1_pd(4.0);
+        __m128d Y0 = _mm_set1_pd(y0);
+
+        for (int i = 0; i < t->width; i += 2) {
+            // Handle last odd pixel
+            if (i + 1 >= t->width) {
+                double x0 = i * ((t->right - t->left) / t->width) + t->left;
+                int repeats = 0;
+                double x = 0, y = 0, length_squared = 0;
+                while (repeats < t->max_iters && length_squared < 4.0) {
+                    double temp = x * x - y * y + x0;
+                    y = 2 * x * y + y0;
+                    x = temp;
+                    length_squared = x * x + y * y;
+                    ++repeats;
+                }
+                t->image[row * t->width + i] = repeats;
+                continue;
             }
-            t->image[row * t->width + i] = repeats;
+
+            // Compute x0 for 2 pixels
+            double x0_arr[2] = {
+                i * ((t->right - t->left) / t->width) + t->left,
+                (i + 1) * ((t->right - t->left) / t->width) + t->left
+            };
+
+            __m128d X0 = _mm_loadu_pd(x0_arr);
+            __m128d X = _mm_set1_pd(0.0);
+            __m128d Y = _mm_set1_pd(0.0);
+            __m128d LEN2 = _mm_set1_pd(0.0);
+
+            int repeats[2] = {0, 0};
+            int done_mask = 0;
+
+            // SIMD Mandelbrot loop
+            for (int k = 0; k < t->max_iters && done_mask != 3; ++k) {
+                __m128d X2 = _mm_mul_pd(X, X);
+                __m128d Y2 = _mm_mul_pd(Y, Y);
+                __m128d XY = _mm_mul_pd(X, Y);
+
+                __m128d TEMPX = _mm_add_pd(_mm_sub_pd(X2, Y2), X0);
+                Y = _mm_add_pd(_mm_add_pd(XY, XY), Y0);
+                X = TEMPX;
+
+                LEN2 = _mm_add_pd(X2, Y2);
+
+                // Compare: LEN2 < 4.0
+                __m128d MASK = _mm_cmplt_pd(LEN2, FOUR);
+                int active = _mm_movemask_pd(MASK);
+
+                if (active & 1) ++repeats[0];
+                if (active & 2) ++repeats[1];
+                done_mask = (~active) & 3;
+            }
+
+            t->image[row * t->width + i] = repeats[0];
+            t->image[row * t->width + i + 1] = repeats[1];
         }
     }
 
-    // gettimeofday(&t->end_time, NULL);
     pthread_exit(NULL);
 }
-
 
 int main(int argc, char** argv) {
     assert(argc == 9);
