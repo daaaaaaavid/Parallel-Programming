@@ -10,4 +10,4 @@ The core objective of this project is to eliminate the need to materialize the m
 ### Configuration & Optimization
 Based on hardware constraints and performance analysis, the following configurations were chosen:
 - Tile Sizes:
--- $$B_r$$
+  - $$B_r$$
